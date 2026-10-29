@@ -18,6 +18,12 @@ final class AppModel: ObservableObject {
     private let tunnel = TunnelController()
 
     init() {
+        #if DEBUG
+        // UI-тесты: сценарий с чистого листа без переустановки приложения.
+        if ProcessInfo.processInfo.arguments.contains("-reset-state") {
+            try? StateStore.save(AppState())
+        }
+        #endif
         state = StateStore.load()
         tunnel.onStatusChange = { [weak self] status in
             guard let self else { return }
@@ -100,6 +106,7 @@ final class AppModel: ObservableObject {
 
     func removeSubscription() async {
         await tunnel.removeProfile()
+        DeviceID.reset()
         delays = [:]
         update { state in
             let accepted = state.privacyAcceptedAt

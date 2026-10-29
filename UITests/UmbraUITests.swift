@@ -79,6 +79,49 @@ final class UmbraUITests: XCTestCase {
         snapshot("07-home-connected")
     }
 
+    /// Путь проверяющего Apple: экран данных → конфиг vless:// → главный → пинг → пояснение перед VPN.
+    /// Ссылка — `TEST_RUNNER_REVIEW_LINK`; без неё тест пропускается.
+    func testReviewFlow() throws {
+        guard let link = ProcessInfo.processInfo.environment["REVIEW_LINK"], !link.isEmpty else {
+            throw XCTSkip("Нет REVIEW_LINK — сценарий проверяющего пропущен")
+        }
+        app.launchArguments = ["-reset-state"]
+        app.launch()
+
+        let accept = app.buttons["Понятно, продолжить"]
+        XCTAssertTrue(accept.waitForExistence(timeout: 5))
+        snapshot("r1-privacy")
+        accept.tap()
+
+        let field = app.textFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText(link)
+        snapshot("r2-paste")
+        app.buttons["Добавить"].tap()
+
+        let picker = app.buttons["server-picker"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 15), "Главный экран не открылся")
+        sleep(1)
+        snapshot("r3-home")
+
+        picker.tap()
+        XCTAssertTrue(app.navigationBars["Серверы"].waitForExistence(timeout: 5))
+        app.buttons["Замерить пинг"].tap()
+        let measured = app.staticTexts.matching(NSPredicate(format: "label ENDSWITH ' мс' OR label == 'нет ответа'")).firstMatch
+        XCTAssertTrue(measured.waitForExistence(timeout: 30))
+        sleep(1)
+        snapshot("r4-servers")
+        app.buttons["Готово"].tap()
+        sleep(1)
+        snapshot("r5-home-ping")
+
+        app.buttons["Подключить"].tap()
+        XCTAssertTrue(app.buttons["Продолжить"].waitForExistence(timeout: 5))
+        sleep(1)
+        snapshot("r6-vpn-explainer")
+    }
+
     private func snapshot(_ name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name

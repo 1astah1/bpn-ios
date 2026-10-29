@@ -212,7 +212,7 @@ extension AppModel {
         if let measured = delays[profile.id] {
             return measured.map { "Пинг \($0) мс" } ?? "Сервер не ответил"
         }
-        return ProfileName(profile.name).code.map { "Сервер \($0)" } ?? " "
+        return ProfileName(profile.name).code.map { "Сервер \($0)" } ?? selectedProtocol ?? " "
     }
 
     static func serversWord(_ count: Int) -> String {
@@ -228,6 +228,7 @@ extension AppModel {
         return wantsConnection || isBusy ? .spinning : .idle
     }
 
+    /// Не больше трёх цифр. С подпиской панели — срок и трафик; с одиночным конфигом — протокол и число серверов.
     var metrics: [Metric] {
         var result: [Metric] = []
         if let usage = state.subscription?.usage {
@@ -237,14 +238,41 @@ extension AppModel {
             }
             let (value, unit) = Self.size(usage.used)
             result.append(Metric(value: value, unit: unit, caption: usage.total > 0 ? "из \(Self.size(usage.total).0) \(Self.size(usage.total).1)" : "Трафик"))
+        } else if let proto = selectedProtocol {
+            result.append(Metric(value: proto, unit: "", caption: "Протокол"))
         }
+
+        let singles = state.profiles.filter { $0.pingOutbound != nil }
+        let countries = Set(singles.compactMap { ProfileName($0.name).code }).count
+        let place = countries > 0
+            ? Metric(value: "\(countries)", unit: "", caption: "Стран")
+            : Metric(value: "\(singles.count)", unit: "", caption: Self.serversWord(singles.count).capitalized)
+
         if let id = state.selectedProfile?.id, let measured = delays[id], let delay = measured {
+            if result.count < 2 { result.append(place) }
             result.append(Metric(value: "\(delay)", unit: "мс", caption: "Пинг"))
         } else {
-            let servers = Set(state.profiles.filter { $0.pingOutbound != nil }.compactMap { ProfileName($0.name).code }).count
-            result.append(Metric(value: "\(servers)", unit: "", caption: "Стран"))
+            result.append(place)
         }
-        return result
+        return Array(result.prefix(3))
+    }
+
+    /// Протокол выбранного профиля: VLESS, VMESS, TROJAN, SS, HY2.
+    var selectedProtocol: String? {
+        guard let profile = state.selectedProfile else { return nil }
+        let outbound: [String: Any]?
+        if let data = profile.pingOutbound {
+            outbound = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        } else {
+            let config = try? JSONSerialization.jsonObject(with: profile.config) as? [String: Any]
+            outbound = (config?["outbounds"] as? [[String: Any]])?.first
+        }
+        guard let name = outbound?["protocol"] as? String else { return nil }
+        switch name {
+        case "shadowsocks": return "SS"
+        case "hysteria", "hysteria2": return "HY2"
+        default: return name.uppercased()
+        }
     }
 
     private static func size(_ bytes: Int64) -> (String, String) {

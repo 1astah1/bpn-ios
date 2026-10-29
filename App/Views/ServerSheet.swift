@@ -79,7 +79,7 @@ struct ServerSheet: View {
             Task { await model.select(profile) }
         } label: {
             HStack(spacing: 14) {
-                CodeBadge(code: name.code, isMode: profile.pingOutbound == nil, selected: selected)
+                CodeBadge(code: name.code ?? String(name.title.prefix(2)).uppercased(), isMode: profile.pingOutbound == nil, selected: selected)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(name.title)
                         .font(.geist(17, .semibold))

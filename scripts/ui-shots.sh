@@ -1,5 +1,6 @@
 #!/bin/bash
-# Прогон UI-теста на маке и выгрузка скриншотов: scripts/ui-shots.sh <ссылка подписки> [симулятор]
+# Прогон UI-тестов на маке и выгрузка скриншотов: scripts/ui-shots.sh <ссылка подписки> [симулятор]
+# Ссылка для сценария проверяющего Apple — переменной REVIEW_LINK (без неё этот тест пропускается).
 # Скриншоты — в shots/ui/<имя>.png.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -18,7 +19,7 @@ xcrun simctl boot "$ID" 2>/dev/null || true
 xcrun simctl bootstatus "$ID" -b >/dev/null
 xcrun simctl uninstall "$ID" "$(grep -E '^BUNDLE_ID_PREFIX' Config/Base.xcconfig | awk '{print $3}')" || true
 rm -rf build/ui.xcresult shots/ui && mkdir -p shots/ui
-TEST_RUNNER_SUBSCRIPTION_URL="$SUB" xcodebuild test -project Umbra.xcodeproj -scheme App -destination "id=$ID" \
+TEST_RUNNER_SUBSCRIPTION_URL="$SUB" TEST_RUNNER_REVIEW_LINK="${REVIEW_LINK:-}" xcodebuild test -project Umbra.xcodeproj -scheme App -destination "id=$ID" \
     -derivedDataPath build/dd -resultBundlePath build/ui.xcresult 2>&1 \
     | grep -E "error:|failed|passed|TEST (SUCCEEDED|FAILED)" || true
 xcrun xcresulttool export attachments --path build/ui.xcresult --output-path shots/ui >/dev/null

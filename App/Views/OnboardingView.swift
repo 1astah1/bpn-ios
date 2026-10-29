@@ -98,10 +98,13 @@ private struct SubscriptionStep: View {
     var body: some View {
         VStack(spacing: 0) {
             Spacer()
+            // Пока открыта клавиатура, шестигранник уступает место заголовку.
             HexKnob(mode: .lit, size: 140)
                 .shadow(color: Brand.blueBright.opacity(0.3), radius: 30)
                 .scaleEffect(appeared || reduceMotion ? 1 : 0.85)
-                .opacity(appeared || reduceMotion ? 1 : 0)
+                .opacity(appeared && !fieldFocused || reduceMotion && !fieldFocused ? 1 : 0)
+                .frame(height: fieldFocused ? 0 : 140)
+                .animation(.spring(response: 0.4, dampingFraction: 1), value: fieldFocused)
 
             VStack(spacing: 12) {
                 Text("Добавьте\nсерверы")
@@ -109,6 +112,7 @@ private struct SubscriptionStep: View {
                     .tracking(-1)
                     .multilineTextAlignment(.center)
                     .foregroundStyle(Brand.text)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text("Вставьте ссылку на список серверов или конфиг: vless://, vmess://, trojan://, ss://, hysteria2://")
                     .font(.geist(16))
                     .foregroundStyle(Brand.textSecondary)

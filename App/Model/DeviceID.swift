@@ -17,6 +17,11 @@ enum DeviceID {
         return fresh
     }
 
+    /// Пользователь удаляет всё с устройства — вместе с серверами забываем и идентификатор.
+    static func reset() {
+        SecItemDelete(baseQuery as CFDictionary)
+    }
+
     private static var baseQuery: [String: Any] {
         [kSecClass as String: kSecClassGenericPassword, kSecAttrAccount as String: account]
     }
