@@ -3,165 +3,218 @@ import SwiftUI
 
 struct HomeView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var showServers = false
     @State private var showSettings = false
 
+    private var profileName: ProfileName? { model.state.selectedProfile.map { ProfileName($0.name) } }
+    private var glow: Double { model.isConnected ? 1 : (model.wantsConnection ? 0.55 : 0) }
+
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 32) {
-                if let subscription = model.state.subscription {
-                    SubscriptionSummary(subscription: subscription)
+        ZStack {
+            BrandBackground(glow: glow)
+                .animation(.easeInOut(duration: 0.6), value: glow)
+
+            VStack(spacing: 0) {
+                topBar
+                header
+                    .padding(.top, 18)
+                Spacer(minLength: 12)
+                stage
+                Spacer(minLength: 12)
+                statusLine
+                    .frame(height: 76)
+                Spacer(minLength: 16)
+                MetricsStrip()
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 8)
+            }
+        }
+        .sheet(isPresented: $showServers) {
+            ServerSheet()
+                .presentationDetents([.medium, .large])
+                .presentationBackground(Brand.background)
+                .presentationCornerRadius(30)
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
+                .presentationBackground(Brand.background)
+                .presentationCornerRadius(30)
+        }
+        .sensoryFeedback(.impact(weight: .medium), trigger: model.wantsConnection)
+        .sensoryFeedback(trigger: model.status) { _, new in
+            new == .connected ? .success : nil
+        }
+    }
+
+    private var topBar: some View {
+        HStack {
+            Text(model.state.subscription?.title?.stripEmoji() ?? "")
+                .font(.mono(13, bold: true))
+                .tracking(2)
+                .foregroundStyle(Brand.text.opacity(0.8))
+            Spacer()
+            Button {
+                showSettings = true
+            } label: {
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Brand.text)
+                    .frame(width: 44, height: 44)
+                    .glass(in: Circle())
+            }
+            .buttonStyle(PressScale(scale: 0.92))
+            .accessibilityLabel("Настройки")
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 6)
+    }
+
+    private var header: some View {
+        VStack(spacing: 10) {
+            MonoLabel(model.statusCaption, color: model.isConnected ? Brand.green : Brand.blueSoft)
+                .contentTransition(.opacity)
+                .animation(.easeOut(duration: 0.2), value: model.statusCaption)
+            Button {
+                showServers = true
+            } label: {
+                HStack(spacing: 10) {
+                    Text(profileName?.title ?? "Выберите сервер")
+                        .font(.geist(34, .bold, relativeTo: .largeTitle))
+                        .tracking(-0.8)
+                        .foregroundStyle(Brand.text)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(Brand.textSecondary)
                 }
+                .padding(.horizontal, 20)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(PressScale())
+            .accessibilityIdentifier("server-picker")
+            .accessibilityHint("Выбрать сервер")
+        }
+    }
 
-                Spacer()
+    /// Тумблер в центре — единственный акцент экрана.
+    private var stage: some View {
+        PowerCapsule(isOn: model.wantsConnection, knobMode: model.knobMode) {
+            Task { await model.toggleConnection() }
+        }
+        .frame(height: PowerCapsule.height + 20)
+    }
 
-                ConnectButton(status: model.status) {
-                    Task { await model.toggleConnection() }
+    @ViewBuilder
+    private var statusLine: some View {
+        if let since = model.connectedSince {
+            VStack(spacing: 4) {
+                TimelineView(.periodic(from: since, by: 1)) { context in
+                    let seconds = max(0, Int(context.date.timeIntervalSince(since)))
+                    Text(Self.clock(seconds))
+                        .font(.geist(40, .bold, relativeTo: .title))
+                        .monospacedDigit()
+                        .foregroundStyle(Brand.text)
+                        .contentTransition(.numericText())
+                        .animation(.snappy(duration: 0.25), value: seconds)
                 }
+                MonoLabel("Время подключения", color: Brand.textSecondary, size: 11)
+            }
+            .transition(.opacity.combined(with: .scale(scale: 0.96)))
+        } else {
+            Text(model.wantsConnection ? "Подключаемся…" : "Потяните ручку вверх или нажмите")
+                .font(.geist(15, .medium))
+                .foregroundStyle(Brand.textSecondary)
+                .transition(.opacity)
+        }
+    }
 
-                Text(model.status.title)
-                    .font(.headline)
-                    .foregroundStyle(model.isConnected ? Color.accentColor : .secondary)
-                    .contentTransition(.opacity)
-                    .animation(.easeOut(duration: 0.2), value: model.status)
+    private static func clock(_ seconds: Int) -> String {
+        String(format: "%02d:%02d:%02d", seconds / 3600, seconds / 60 % 60, seconds % 60)
+    }
+}
 
-                Spacer()
+/// Полоса с цифрами внизу — как блок «скорость · серверы · поддержка» на баннере.
+private struct MetricsStrip: View {
+    @EnvironmentObject private var model: AppModel
 
-                NavigationLink {
-                    ServerListView()
-                } label: {
-                    HStack {
-                        Image(systemName: "globe")
-                        Text(model.state.selectedProfile?.name ?? "Выберите сервер")
-                            .lineLimit(1)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(.tertiary)
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(model.metrics.enumerated()), id: \.offset) { index, metric in
+                if index > 0 {
+                    Rectangle().fill(Color.white.opacity(0.08)).frame(width: 1, height: 34)
+                }
+                VStack(spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 3) {
+                        Text(metric.value)
+                            .font(.geist(24, .bold, relativeTo: .title2))
+                            .monospacedDigit()
+                            .foregroundStyle(Brand.text)
+                            .contentTransition(.numericText())
+                        Text(metric.unit)
+                            .font(.geist(13, .semibold))
+                            .foregroundStyle(Brand.blueSoft)
                     }
-                    .padding(16)
-                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    Text(metric.caption.uppercased())
+                        .font(.mono(10))
+                        .tracking(1.2)
+                        .foregroundStyle(Brand.textSecondary)
                 }
-                .buttonStyle(.plain)
-            }
-            .padding(20)
-            .navigationTitle(model.state.subscription?.title ?? "")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showSettings = true
-                    } label: {
-                        Image(systemName: "gearshape")
-                    }
-                    .accessibilityLabel("Настройки")
-                }
-            }
-            .sheet(isPresented: $showSettings) {
-                SettingsView()
+                .frame(maxWidth: .infinity)
             }
         }
+        .padding(.vertical, 16)
+        .glass(in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .animation(.snappy, value: model.metrics)
     }
 }
 
-private struct ConnectButton: View {
-    let status: NEVPNStatus
-    let action: () -> Void
-
-    private var isOn: Bool { status == .connected }
-    private var isBusy: Bool { [.connecting, .disconnecting, .reasserting].contains(status) }
-
-    var body: some View {
-        Button(action: action) {
-            ZStack {
-                Circle()
-                    .fill(isOn ? Color.accentColor : Color(.secondarySystemFill))
-                Circle()
-                    .strokeBorder(Color.accentColor.opacity(isOn ? 0.35 : 0), lineWidth: 10)
-                    .padding(-14)
-                if isBusy {
-                    ProgressView()
-                        .controlSize(.large)
-                        .tint(isOn ? .white : .accentColor)
-                } else {
-                    Image(systemName: "power")
-                        .font(.system(size: 54, weight: .semibold))
-                        .foregroundStyle(isOn ? Color.white : Color.primary)
-                }
-            }
-            .frame(width: 176, height: 176)
-        }
-        .buttonStyle(PressScaleStyle())
-        .sensoryFeedback(.impact(weight: .medium), trigger: isOn)
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: status)
-        .accessibilityLabel(isOn ? "Отключить" : "Подключить")
-    }
+struct Metric: Equatable {
+    var value: String
+    var unit: String
+    var caption: String
 }
 
-private struct PressScaleStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
-            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
-    }
-}
-
-private struct SubscriptionSummary: View {
-    let subscription: Subscription
-
-    var body: some View {
-        if let usage = subscription.usage {
-            HStack(spacing: 12) {
-                if let expire = usage.expire {
-                    Metric(title: "Осталось", value: Self.daysLeft(until: expire))
-                }
-                Metric(
-                    title: "Трафик",
-                    value: usage.total > 0
-                        ? "\(Self.bytes(usage.used)) из \(Self.bytes(usage.total))"
-                        : Self.bytes(usage.used)
-                )
-            }
-        }
-    }
-
-    private static func daysLeft(until date: Date) -> String {
-        let days = max(0, Calendar.current.dateComponents([.day], from: Date(), to: date).day ?? 0)
-        return days == 0 ? "меньше дня" : "\(days) дн."
-    }
-
-    private static func bytes(_ value: Int64) -> String {
-        ByteCountFormatter.string(fromByteCount: value, countStyle: .binary)
-    }
-}
-
-private struct Metric: View {
-    let title: String
-    let value: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.subheadline.weight(.semibold))
-                .monospacedDigit()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-}
-
-extension NEVPNStatus {
-    var title: String {
-        switch self {
+extension AppModel {
+    var statusCaption: String {
+        switch status {
         case .connected: return "Подключено"
-        case .connecting: return "Подключаемся…"
-        case .reasserting: return "Восстанавливаем связь…"
-        case .disconnecting: return "Отключаемся…"
-        case .disconnected, .invalid: return "Не подключено"
-        @unknown default: return "Не подключено"
+        case .connecting: return "Подключаемся"
+        case .reasserting: return "Восстанавливаем связь"
+        case .disconnecting: return "Отключаемся"
+        default: return wantsConnection ? "Подключаемся" : "Не подключено"
         }
+    }
+
+    var knobMode: HexKnob.Mode {
+        if status == .connected { return .lit }
+        return wantsConnection || isBusy ? .spinning : .idle
+    }
+
+    var metrics: [Metric] {
+        var result: [Metric] = []
+        if let usage = state.subscription?.usage {
+            if let expire = usage.expire {
+                let days = max(0, Calendar.current.dateComponents([.day], from: Date(), to: expire).day ?? 0)
+                result.append(Metric(value: "\(days)", unit: "дн", caption: "Осталось"))
+            }
+            let (value, unit) = Self.size(usage.used)
+            result.append(Metric(value: value, unit: unit, caption: usage.total > 0 ? "из \(Self.size(usage.total).0) \(Self.size(usage.total).1)" : "Трафик"))
+        }
+        if let id = state.selectedProfile?.id, let measured = delays[id], let delay = measured {
+            result.append(Metric(value: "\(delay)", unit: "мс", caption: "Пинг"))
+        } else {
+            let servers = Set(state.profiles.filter { $0.pingOutbound != nil }.compactMap { ProfileName($0.name).code }).count
+            result.append(Metric(value: "\(servers)", unit: "", caption: "Стран"))
+        }
+        return result
+    }
+
+    private static func size(_ bytes: Int64) -> (String, String) {
+        let gb = Double(bytes) / 1_073_741_824
+        if gb >= 100 { return (String(format: "%.0f", gb), "ГБ") }
+        if gb >= 1 { return (String(format: "%.1f", gb).replacingOccurrences(of: ".", with: ","), "ГБ") }
+        return (String(format: "%.0f", Double(bytes) / 1_048_576), "МБ")
     }
 }

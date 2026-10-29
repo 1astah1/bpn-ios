@@ -10,6 +10,8 @@ final class TunnelController {
     private var statusObserver: NSObjectProtocol?
 
     var status: NEVPNStatus { manager?.connection.status ?? .invalid }
+    /// Когда туннель поднялся — для таймера на главном экране.
+    var connectedDate: Date? { manager?.connection.connectedDate }
 
     func load() async {
         let managers = (try? await NETunnelProviderManager.loadAllFromPreferences()) ?? []

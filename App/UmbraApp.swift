@@ -8,6 +8,8 @@ struct UmbraApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(model)
+                .preferredColorScheme(.dark)
+                .tint(Brand.blueBright)
                 .task { await model.onLaunch() }
                 .onOpenURL { url in
                     Task { await model.handleOpenURL(url) }

@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Общая папка приложения и VPN-расширения.
 enum AppGroup {
@@ -9,12 +10,18 @@ enum AppGroup {
         return id
     }()
 
-    static var containerURL: URL {
-        guard let url = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: identifier) else {
-            preconditionFailure("Нет доступа к App Group \(identifier) — проверь entitlements")
+    /// Без entitlement (неподписанная сборка) общей папки нет. Тогда работаем в своей папке приложения:
+    /// интерфейс живёт, а VPN-расширение конфиг не увидит — об этом пишем в лог, а не падаем на старте.
+    static let containerURL: URL = {
+        if let url = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: identifier) {
+            return url
         }
-        return url
-    }
+        Logger(subsystem: Bundle.main.bundleIdentifier ?? "app", category: "app-group")
+            .error("Нет доступа к App Group \(identifier, privacy: .public) — проверь подпись и entitlements")
+        let fallback = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        try? FileManager.default.createDirectory(at: fallback, withIntermediateDirectories: true)
+        return fallback
+    }()
 
     /// Готовый конфиг Xray: собирает приложение, запускает расширение.
     static var tunnelConfigURL: URL { containerURL.appendingPathComponent("tunnel-config.json") }

@@ -22,6 +22,10 @@ settings:
     DEAD_CODE_STRIPPING: YES
     # Go-рантайм внутри LibXray тянет libresolv.
     OTHER_LDFLAGS: ["$(inherited)", "-lresolv"]
+    # Ядро собрано под arm64; маки с Intel не поддерживаем.
+    EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64
+    # В симуляторе без команды разработчика — локальная подпись, иначе нет App Group.
+    CODE_SIGN_IDENTITY[sdk=iphonesimulator*]: "-"
 
 targets:
   App:
@@ -45,9 +49,17 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: $(BUNDLE_ID_PREFIX)
             CFBundleURLSchemes: [$(APP_URL_SCHEME)]
-        ITSAppUsesNonExemptEncryption: false
         LSRequiresIPhoneOS: true
-        UILaunchScreen: {}
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UIAppFonts:
+          - Geist-Medium.ttf
+          - Geist-SemiBold.ttf
+          - Geist-Bold.ttf
+          - Geist-Black.ttf
+          - GeistMono-Medium.ttf
+          - GeistMono-Bold.ttf
+        UIUserInterfaceStyle: Dark
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         UIApplicationSupportsIndirectInputEvents: true
     entitlements:
@@ -94,3 +106,29 @@ targets:
       base:
         PRODUCT_NAME: PacketTunnel
         PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_ID_PREFIX).tunnel
+
+  UITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: App
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_ID_PREFIX).uitests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  App:
+    build:
+      targets:
+        App: all
+        UITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets: [UITests]
+    archive:
+      config: Release

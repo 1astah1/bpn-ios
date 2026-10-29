@@ -6,6 +6,9 @@ import UIKit
 final class AppModel: ObservableObject {
     @Published private(set) var state: AppState
     @Published private(set) var status: NEVPNStatus = .invalid
+    /// Чего хочет пользователь: тумблер встаёт сразу, не дожидаясь системы.
+    @Published private(set) var wantsConnection = false
+    @Published private(set) var connectedSince: Date?
     @Published private(set) var isRefreshing = false
     @Published private(set) var isMeasuring = false
     /// Задержка до сервера профиля, мс; nil — не ответил. Нет ключа — ещё не мерили.
@@ -16,13 +19,31 @@ final class AppModel: ObservableObject {
 
     init() {
         state = StateStore.load()
-        tunnel.onStatusChange = { [weak self] in self?.status = $0 }
+        tunnel.onStatusChange = { [weak self] status in
+            guard let self else { return }
+            self.status = status
+            self.connectedSince = status == .connected ? self.tunnel.connectedDate : nil
+            switch status {
+            case .connected, .connecting, .reasserting: self.wantsConnection = true
+            case .disconnected, .invalid: self.wantsConnection = false
+            default: break
+            }
+        }
     }
 
     var isConnected: Bool { status == .connected }
     var isBusy: Bool { [.connecting, .disconnecting, .reasserting].contains(status) }
 
     func onLaunch() async {
+        #if DEBUG
+        // Скриншоты и проверка вёрстки в симуляторе, где туннель не поднимается: `-demo-connected`.
+        if ProcessInfo.processInfo.arguments.contains("-demo-connected") {
+            status = .connected
+            wantsConnection = true
+            connectedSince = Date().addingTimeInterval(-754)
+            return
+        }
+        #endif
         await tunnel.load()
         if let subscription = state.subscription, subscription.isStale {
             await refresh()
@@ -89,7 +110,8 @@ final class AppModel: ObservableObject {
     // MARK: Подключение
 
     func toggleConnection() async {
-        if isConnected || isBusy {
+        if wantsConnection || isConnected || isBusy {
+            wantsConnection = false
             tunnel.stop()
         } else {
             await connect()
@@ -97,11 +119,13 @@ final class AppModel: ObservableObject {
     }
 
     func connect() async {
+        wantsConnection = true
         do {
             try writeTunnelConfig()
             try await tunnel.start()
         } catch {
-            errorMessage = error.localizedDescription
+            wantsConnection = false
+            errorMessage = Self.describe(error)
         }
     }
 
@@ -173,6 +197,30 @@ final class AppModel: ObservableObject {
         } catch {
             errorMessage = "Не удалось сохранить настройки: \(error.localizedDescription)"
         }
+    }
+
+    /// Ошибки NetworkExtension приходят системными строками вроде «IPC failed» — переводим на человеческий.
+    private static func describe(_ error: Error) -> String {
+        let nsError = error as NSError
+        guard nsError.domain == NEVPNErrorDomain, let code = NEVPNError.Code(rawValue: nsError.code) else {
+            return error.localizedDescription
+        }
+        #if targetEnvironment(simulator)
+        return "VPN в симуляторе не запускается — проверьте на iPhone"
+        #else
+        switch code {
+        case .configurationReadWriteFailed:
+            return "Не удалось сохранить настройки VPN. Если система спросила разрешение — нажмите «Разрешить»."
+        case .configurationInvalid, .configurationStale, .configurationUnknown:
+            return "Профиль VPN устарел. Попробуйте ещё раз — приложение пересоздаст его."
+        case .configurationDisabled:
+            return "Профиль VPN выключен в Настройках → VPN."
+        case .connectionFailed:
+            return "Не удалось подключиться. Выберите другой сервер или обновите подписку."
+        @unknown default:
+            return error.localizedDescription
+        }
+        #endif
     }
 
     private static func subscriptionURL(from text: String) -> URL? {
