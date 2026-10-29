@@ -1,0 +1,15 @@
+// Общие настройки обеих целей. Название и идентификаторы — рабочие,
+// финальные подставим, когда будет аккаунт Apple и выбрано имя в магазине.
+
+APP_DISPLAY_NAME = Umbra
+BUNDLE_ID_PREFIX = com.example.umbra
+APP_GROUP_ID = group.$(BUNDLE_ID_PREFIX)
+// Диплинк импорта подписки: <scheme>://import?url=<ссылка>
+APP_URL_SCHEME = umbra
+
+MARKETING_VERSION = 0.1.0
+CURRENT_PROJECT_VERSION = 1
+
+// Команда разработчика и прочее локальное — в Config/Local.xcconfig (не в git):
+// DEVELOPMENT_TEAM = XXXXXXXXXX
+#include? "Local.xcconfig"

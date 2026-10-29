@@ -1,0 +1,16 @@
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+build/
+*.ipa
+*.dSYM.zip
+
+# Собирается скриптом scripts/build-libxray.sh
+Vendor/
+
+# Локальные настройки подписи
+Config/Local.xcconfig
+
+.DS_Store

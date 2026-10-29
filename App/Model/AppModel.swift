@@ -1,0 +1,205 @@
+import Foundation
+import NetworkExtension
+import UIKit
+
+@MainActor
+final class AppModel: ObservableObject {
+    @Published private(set) var state: AppState
+    @Published private(set) var status: NEVPNStatus = .invalid
+    @Published private(set) var isRefreshing = false
+    @Published private(set) var isMeasuring = false
+    /// Задержка до сервера, мс; nil — не ответил. Нет ключа — ещё не мерили.
+    @Published private(set) var delays: [String: Int?] = [:]
+    @Published var errorMessage: String?
+
+    private let tunnel = TunnelController()
+
+    init() {
+        state = StateStore.load()
+        tunnel.onStatusChange = { [weak self] in self?.status = $0 }
+    }
+
+    var isConnected: Bool { status == .connected }
+    var isBusy: Bool { [.connecting, .disconnecting, .reasserting].contains(status) }
+
+    var selectedServerName: String {
+        switch state.selection {
+        case .auto: return "Автовыбор"
+        case .server(let id): return state.servers.first { $0.id == id }?.name ?? "Автовыбор"
+        }
+    }
+
+    func onLaunch() async {
+        await tunnel.load()
+        if let subscription = state.subscription, subscription.isStale {
+            await refresh()
+        }
+    }
+
+    // MARK: Подписка
+
+    /// Ссылка подписки — вставкой, из QR или диплинком `<scheme>://import?url=...`.
+    func addSubscription(_ text: String) async {
+        guard let url = Self.subscriptionURL(from: text) else {
+            errorMessage = "Это не похоже на ссылку подписки"
+            return
+        }
+        await load(url)
+    }
+
+    func handleOpenURL(_ url: URL) async {
+        guard url.host == "import",
+              let raw = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "url" })?.value else { return }
+        await addSubscription(raw)
+    }
+
+    func refresh() async {
+        guard let url = state.subscription?.url else { return }
+        await load(url)
+    }
+
+    func removeSubscription() async {
+        await tunnel.removeProfile()
+        delays = [:]
+        update { $0 = AppState() }
+    }
+
+    private func load(_ url: URL) async {
+        isRefreshing = true
+        defer { isRefreshing = false }
+        do {
+            let (subscription, servers) = try await client.fetch(url)
+            update { state in
+                state.subscription = subscription
+                state.servers = servers
+                if case .server(let id) = state.selection, !servers.contains(where: { $0.id == id }) {
+                    state.selection = .auto
+                }
+            }
+            delays = [:]
+            await applyConfigIfConnected()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private var client: SubscriptionClient {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+        let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "Client"
+        return SubscriptionClient(
+            device: .init(hwid: DeviceID.current, osVersion: UIDevice.current.systemVersion, model: Self.deviceModel),
+            userAgent: "\(name)/\(version) (iOS)"
+        )
+    }
+
+    // MARK: Подключение
+
+    func toggleConnection() async {
+        if isConnected || isBusy {
+            tunnel.stop()
+        } else {
+            await connect()
+        }
+    }
+
+    func connect() async {
+        do {
+            try writeTunnelConfig()
+            try await tunnel.start()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func select(_ selection: ServerSelection) async {
+        update { $0.selection = selection }
+        await applyConfigIfConnected()
+    }
+
+    func setDirectDomestic(_ enabled: Bool) async {
+        update { $0.directDomestic = enabled }
+        await applyConfigIfConnected()
+    }
+
+    private func applyConfigIfConnected() async {
+        guard isConnected else { return }
+        do {
+            try writeTunnelConfig()
+            await tunnel.reloadConfig()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func writeTunnelConfig() throws {
+        #if DEBUG
+        let logLevel = "info"
+        #else
+        let logLevel = "warning"
+        #endif
+        let config = try XrayConfigBuilder.build(state: state, logLevel: logLevel)
+        try Data(config.utf8).write(
+            to: AppGroup.tunnelConfigURL,
+            options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
+        )
+    }
+
+    // MARK: Скорость серверов
+
+    /// Меряем из процесса приложения и только без VPN: через туннель цифры были бы двойными.
+    func measureDelays() async {
+        guard !isConnected, !isMeasuring, !state.servers.isEmpty else { return }
+        isMeasuring = true
+        defer { isMeasuring = false }
+        let servers = state.servers
+        let outbounds = servers.compactMap { try? JSONSerialization.jsonObject(with: $0.outbound) as? [String: Any] }
+        guard outbounds.count == servers.count else { return }
+
+        let results = await Task.detached(priority: .userInitiated) {
+            try? Xray.ping(outbounds: outbounds, url: XrayConfigBuilder.probeURL, timeoutSeconds: 5)
+        }.value
+        guard let results else {
+            errorMessage = "Не удалось проверить серверы"
+            return
+        }
+        delays = Dictionary(uniqueKeysWithValues: zip(servers.map(\.id), results))
+    }
+
+    // MARK: Вспомогательное
+
+    private func update(_ change: (inout AppState) -> Void) {
+        var next = state
+        change(&next)
+        state = next
+        do {
+            try StateStore.save(next)
+        } catch {
+            errorMessage = "Не удалось сохранить настройки: \(error.localizedDescription)"
+        }
+    }
+
+    private static func subscriptionURL(from text: String) -> URL? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed), url.scheme == "https" || url.scheme == "http", url.host != nil else {
+            return nil
+        }
+        return url
+    }
+
+    private static var deviceModel: String {
+        var info = utsname()
+        uname(&info)
+        return withUnsafeBytes(of: &info.machine) { buffer in
+            String(decoding: buffer.prefix { $0 != 0 }, as: UTF8.self)
+        }
+    }
+}
+
+extension Subscription {
+    /// Пора обновить: панель задаёт интервал в часах, по умолчанию раз в сутки.
+    var isStale: Bool {
+        let hours = Double(updateIntervalHours ?? 24)
+        return Date().timeIntervalSince(updatedAt) > hours * 3600
+    }
+}
