@@ -10,6 +10,8 @@ final class TunnelController {
     private var statusObserver: NSObjectProtocol?
 
     var status: NEVPNStatus { manager?.connection.status ?? .invalid }
+    /// Профиль VPN уже добавлен в систему — значит, системный запрос разрешения уже был.
+    var hasProfile: Bool { manager != nil }
     /// Когда туннель поднялся — для таймера на главном экране.
     var connectedDate: Date? { manager?.connection.connectedDate }
 

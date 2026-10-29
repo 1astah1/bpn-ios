@@ -31,6 +31,8 @@ struct HomeView: View {
                         .padding(.horizontal, 20)
                         .padding(.bottom, 8)
                 }
+                .frame(maxWidth: 520)
+                .frame(maxWidth: .infinity)
             }
         }
         .sheet(isPresented: $showServers) {
@@ -39,6 +41,9 @@ struct HomeView: View {
                 .presentationBackground(Brand.background)
                 .presentationCornerRadius(30)
                 .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $model.showVPNExplainer) {
+            VPNExplainerSheet()
         }
         .sheet(isPresented: $showSettings) {
             SettingsView()

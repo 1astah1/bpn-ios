@@ -8,6 +8,8 @@ final class UmbraUITests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
         app = XCUIApplication()
+        // Одно и то же «устройство» во всех прогонах — не съедаем лимит устройств тестовой подписки.
+        app.launchEnvironment["UMBRA_TEST_HWID"] = "umbra-uitest-0001"
     }
 
     func testMainFlow() throws {
@@ -59,8 +61,14 @@ final class UmbraUITests: XCTestCase {
 
         // В симуляторе туннель не поднимается — смотрим, что пользователь увидит при ошибке.
         app.buttons["Подключить"].tap()
+        // Перед первым системным запросом VPN — пояснение (ревью требует объяснить, что с данными).
+        let proceed = app.buttons["Продолжить"]
+        XCTAssertTrue(proceed.waitForExistence(timeout: 5), "Нет пояснения перед запросом VPN")
+        sleep(1)
+        snapshot("06-vpn-explainer")
+        proceed.tap()
         sleep(3)
-        snapshot("06-connect-attempt")
+        snapshot("06b-connect-attempt")
 
         // Вид «подключено» — через отладочный флаг, туннель в симуляторе не работает.
         app.terminate()

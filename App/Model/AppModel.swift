@@ -50,15 +50,32 @@ final class AppModel: ObservableObject {
         }
     }
 
-    // MARK: Подписка
+    // MARK: Конфигурация
 
-    /// Ссылка подписки — вставкой или диплинком `<scheme>://import?url=...`.
+    /// Ссылка на список серверов (https://…) или сами конфиги (vless://, vmess://, trojan://, ss://, hysteria2://,
+    /// base64-список) — вставкой или диплинком `<scheme>://import?url=...`. Клиент универсальный: работает с любым
+    /// совместимым сервером, не только с одним сервисом.
     func addSubscription(_ text: String) async {
-        guard let url = Self.subscriptionURL(from: text) else {
-            errorMessage = "Это не похоже на ссылку подписки"
-            return
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let url = Self.subscriptionURL(from: trimmed) {
+            await load(url)
+        } else {
+            importConfigs(trimmed)
         }
-        await load(url)
+    }
+
+    private func importConfigs(_ text: String) {
+        do {
+            let profiles = try ProfileFactory.profiles(from: text)
+            update { state in
+                state.subscription = nil
+                state.profiles = profiles
+                state.selectedProfileID = profiles.first?.id
+            }
+            delays = [:]
+        } catch {
+            errorMessage = "Не удалось распознать ссылку. Подходят https-ссылки на список серверов и конфиги vless://, vmess://, trojan://, ss://, hysteria2://."
+        }
     }
 
     func handleOpenURL(_ url: URL) async {
@@ -130,7 +147,19 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func connect() async {
+    /// Перед первым системным запросом «Добавить конфигурацию VPN» объясняем, зачем она и что с данными.
+    @Published var showVPNExplainer = false
+
+    func confirmVPNExplainer() async {
+        showVPNExplainer = false
+        await connect(explained: true)
+    }
+
+    func connect(explained: Bool = false) async {
+        if !explained, !tunnel.hasProfile {
+            showVPNExplainer = true
+            return
+        }
         wantsConnection = true
         do {
             try writeTunnelConfig()
@@ -228,7 +257,7 @@ final class AppModel: ObservableObject {
         case .configurationDisabled:
             return "Профиль VPN выключен в Настройках → VPN."
         case .connectionFailed:
-            return "Не удалось подключиться. Выберите другой сервер или обновите подписку."
+            return "Не удалось подключиться. Выберите другой сервер или обновите список серверов."
         @unknown default:
             return error.localizedDescription
         }

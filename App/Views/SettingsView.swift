@@ -10,7 +10,7 @@ struct SettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     if let subscription = model.state.subscription {
-                        group("Подписка") {
+                        group("Список серверов") {
                             Button {
                                 Task { await model.refresh() }
                             } label: {
@@ -61,7 +61,7 @@ struct SettingsView: View {
                     Button {
                         confirmRemove = true
                     } label: {
-                        Text("Удалить подписку с устройства")
+                        Text("Удалить серверы с устройства")
                             .font(.geist(16, .semibold))
                             .foregroundStyle(Brand.red)
                             .frame(maxWidth: .infinity)
@@ -83,7 +83,7 @@ struct SettingsView: View {
                     Button("Готово") { dismiss() }
                 }
             }
-            .confirmationDialog("Удалить подписку и профиль VPN?", isPresented: $confirmRemove, titleVisibility: .visible) {
+            .confirmationDialog("Удалить серверы и профиль VPN?", isPresented: $confirmRemove, titleVisibility: .visible) {
                 Button("Удалить", role: .destructive) {
                     Task {
                         await model.removeSubscription()

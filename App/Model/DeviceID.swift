@@ -7,6 +7,10 @@ enum DeviceID {
     private static let account = "hwid"
 
     static var current: String {
+        #if DEBUG
+        // UI-тесты стирают симулятор — без постоянного id каждый прогон занимал бы новое место в лимите устройств.
+        if let testID = ProcessInfo.processInfo.environment["UMBRA_TEST_HWID"], !testID.isEmpty { return testID }
+        #endif
         if let existing = read() { return existing }
         let fresh = UUID().uuidString.lowercased()
         save(fresh)

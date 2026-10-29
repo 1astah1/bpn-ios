@@ -15,10 +15,10 @@ struct SubscriptionClient {
 
         var errorDescription: String? {
             switch self {
-            case .badStatus(404): return "Подписка не найдена — проверь ссылку"
-            case .badStatus(let code): return "Сервер подписки ответил ошибкой \(code)"
-            case .notHTTP: return "Ссылка подписки должна начинаться с https://"
-            case .deviceLimit: return "На подписке уже максимум устройств. Отвяжите старое устройство в боте и попробуйте снова."
+            case .badStatus(404): return "По ссылке ничего не нашлось — проверьте её"
+            case .badStatus(let code): return "Сервер по ссылке ответил ошибкой \(code)"
+            case .notHTTP: return "Ссылка должна начинаться с https://"
+            case .deviceLimit: return "По этой ссылке уже подключено максимум устройств. Отвяжите старое устройство и попробуйте снова."
             }
         }
     }
@@ -27,7 +27,13 @@ struct SubscriptionClient {
     var userAgent: String
 
     func fetch(_ url: URL) async throws -> (Subscription, [Profile]) {
-        let (data, response) = try await get(url)
+        // Данные устройства — только серверу, который сам ведёт лимит устройств (Remnawave отвечает x-hwid-active).
+        // Остальным незачем: правило 5.4 запрещает раскрывать данные третьим лицам без нужды.
+        var (data, response) = try await get(url, sendDevice: false)
+        let sendDevice = response.value(forHTTPHeaderField: "x-hwid-active") == "true"
+        if sendDevice {
+            (data, response) = try await get(url, sendDevice: true)
+        }
         if response.value(forHTTPHeaderField: "x-hwid-max-devices-reached") == "true" {
             throw FetchError.deviceLimit
         }
@@ -36,7 +42,7 @@ struct SubscriptionClient {
         // Remnawave по ссылке подписки отдаёт незнакомым клиентам base64, где «Авто» и «Обход LTE» — заглушки.
         // Полные конфиги лежат по тому же адресу с /json. У других панелей такого пути нет — тогда остаёмся на ссылках.
         if !ProfileFactory.isJSON(body), let jsonURL = Self.jsonVariant(of: url),
-           let jsonResponse = try? await get(jsonURL) {
+           let jsonResponse = try? await get(jsonURL, sendDevice: sendDevice) {
             let jsonBody = String(decoding: jsonResponse.0, as: UTF8.self)
             if ProfileFactory.isJSON(jsonBody) { body = jsonBody }
         }
@@ -55,14 +61,16 @@ struct SubscriptionClient {
         return (subscription, profiles)
     }
 
-    private func get(_ url: URL) async throws -> (Data, HTTPURLResponse) {
+    private func get(_ url: URL, sendDevice: Bool) async throws -> (Data, HTTPURLResponse) {
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
-        // Без этих заголовков Remnawave при включённом лимите устройств отдаёт заглушку вместо серверов.
-        request.setValue(device.hwid, forHTTPHeaderField: "x-hwid")
-        request.setValue("iOS", forHTTPHeaderField: "x-device-os")
-        request.setValue(device.osVersion, forHTTPHeaderField: "x-ver-os")
-        request.setValue(device.model, forHTTPHeaderField: "x-device-model")
+        if sendDevice {
+            // Без этих заголовков Remnawave при включённом лимите устройств отдаёт заглушку вместо серверов.
+            request.setValue(device.hwid, forHTTPHeaderField: "x-hwid")
+            request.setValue("iOS", forHTTPHeaderField: "x-device-os")
+            request.setValue(device.osVersion, forHTTPHeaderField: "x-ver-os")
+            request.setValue(device.model, forHTTPHeaderField: "x-device-model")
+        }
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw FetchError.notHTTP }

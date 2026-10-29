@@ -10,7 +10,7 @@ enum ProfileFactory {
 
         var errorDescription: String? {
             switch self {
-            case .empty: return "В подписке нет серверов"
+            case .empty: return "По ссылке не нашлось серверов"
             case .placeholder(let message): return message
             }
         }

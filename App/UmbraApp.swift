@@ -23,7 +23,7 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
-            if model.state.subscription == nil {
+            if model.state.profiles.isEmpty {
                 OnboardingView()
                     .transition(.opacity)
             } else {
@@ -31,7 +31,7 @@ struct RootView: View {
                     .transition(.opacity.combined(with: .scale(scale: 1.02)))
             }
         }
-        .animation(.easeInOut(duration: 0.35), value: model.state.subscription == nil)
+        .animation(.easeInOut(duration: 0.35), value: model.state.profiles.isEmpty)
         .alert(
             "Не получилось",
             isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } }),

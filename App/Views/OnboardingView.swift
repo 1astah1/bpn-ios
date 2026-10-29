@@ -35,9 +35,9 @@ private struct PrivacyStep: View {
                 .padding(.top, 10)
 
             VStack(alignment: .leading, spacing: 22) {
-                item("link", "Ссылку подписки", "Чтобы загрузить список серверов вашего сервиса.")
+                item("link", "Ссылку, которую вы добавите", "Только чтобы загрузить список серверов по ней.")
                 item("iphone", "Идентификатор устройства, модель и версию iOS",
-                     "Серверу подписки — чтобы учитывать лимит устройств. Больше никуда.")
+                     "Только тому серверу из ссылки, который сам ведёт лимит устройств. Больше никуда.")
                 item("eye.slash", "Не хранит историю и трафик",
                      "Приложение не ведёт журнал посещённых сайтов, не продаёт и не передаёт данные третьим лицам.")
             }
@@ -104,12 +104,12 @@ private struct SubscriptionStep: View {
                 .opacity(appeared || reduceMotion ? 1 : 0)
 
             VStack(spacing: 12) {
-                Text("Подключите\nподписку")
+                Text("Добавьте\nсерверы")
                     .font(.geist(38, .bold, relativeTo: .largeTitle))
                     .tracking(-1)
                     .multilineTextAlignment(.center)
                     .foregroundStyle(Brand.text)
-                Text("Скопируйте ссылку подписки из личного кабинета сервиса и вставьте её сюда.")
+                Text("Вставьте ссылку на список серверов или конфиг: vless://, vmess://, trojan://, ss://, hysteria2://")
                     .font(.geist(16))
                     .foregroundStyle(Brand.textSecondary)
                     .multilineTextAlignment(.center)
@@ -122,10 +122,10 @@ private struct SubscriptionStep: View {
             Spacer()
 
             VStack(spacing: 12) {
-                PrimaryButton(title: "Вставить ссылку", icon: "doc.on.clipboard.fill", action: paste)
+                PrimaryButton(title: "Вставить из буфера", icon: "doc.on.clipboard.fill", action: paste)
 
                 HStack(spacing: 10) {
-                    TextField("", text: $link, prompt: Text("https://…").foregroundStyle(Brand.textSecondary.opacity(0.6)))
+                    TextField("", text: $link, prompt: Text("https://… или vless://…").foregroundStyle(Brand.textSecondary.opacity(0.6)))
                         .font(.mono(15))
                         .foregroundStyle(Brand.text)
                         .tint(Brand.blueBright)
