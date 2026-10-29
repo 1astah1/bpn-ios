@@ -31,12 +31,16 @@ struct Profile: Codable, Identifiable, Equatable {
     var config: Data
     /// Единственный прокси профиля — его можно пинговать. У «Авто» и «Обход LTE» серверов несколько.
     var pingOutbound: Data?
+    /// Сколько серверов внутри профиля. nil — сохранено старой версией приложения.
+    var serverCount: Int?
 }
 
 struct AppState: Codable, Equatable {
     var subscription: Subscription?
     var profiles: [Profile] = []
     var selectedProfileID: String?
+    /// Когда пользователь прочитал, какие данные передаются (правило App Review 5.4). nil — ещё не видел.
+    var privacyAcceptedAt: Date?
 
     var selectedProfile: Profile? {
         profiles.first { $0.id == selectedProfileID } ?? profiles.first

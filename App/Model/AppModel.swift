@@ -73,10 +73,22 @@ final class AppModel: ObservableObject {
         await load(url)
     }
 
+    func acceptPrivacy() {
+        update { $0.privacyAcceptedAt = Date() }
+    }
+
+    static var privacyPolicyURL: URL? {
+        (Bundle.main.object(forInfoDictionaryKey: "PrivacyPolicyURL") as? String).flatMap(URL.init(string:))
+    }
+
     func removeSubscription() async {
         await tunnel.removeProfile()
         delays = [:]
-        update { $0 = AppState() }
+        update { state in
+            let accepted = state.privacyAcceptedAt
+            state = AppState()
+            state.privacyAcceptedAt = accepted
+        }
     }
 
     private func load(_ url: URL) async {

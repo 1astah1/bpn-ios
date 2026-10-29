@@ -14,19 +14,23 @@ struct HomeView: View {
             BrandBackground(glow: glow)
                 .animation(.easeInOut(duration: 0.6), value: glow)
 
-            VStack(spacing: 0) {
-                topBar
-                header
-                    .padding(.top, 18)
-                Spacer(minLength: 12)
-                stage
-                Spacer(minLength: 12)
-                statusLine
-                    .frame(height: 76)
-                Spacer(minLength: 16)
-                MetricsStrip()
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 8)
+            GeometryReader { proxy in
+                // Капсула занимает ~40% высоты: на iPhone SE она ниже, на Pro Max — не больше 304 pt.
+                let capsuleHeight = min(304, max(210, proxy.size.height * 0.4))
+                VStack(spacing: 0) {
+                    topBar
+                    header
+                        .padding(.top, 14)
+                    Spacer(minLength: 8)
+                    stage(height: capsuleHeight)
+                    Spacer(minLength: 8)
+                    statusLine
+                        .frame(height: 72)
+                    Spacer(minLength: 12)
+                    MetricsStrip()
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 8)
+                }
             }
         }
         .sheet(isPresented: $showServers) {
@@ -95,15 +99,21 @@ struct HomeView: View {
             .buttonStyle(PressScale())
             .accessibilityIdentifier("server-picker")
             .accessibilityHint("Выбрать сервер")
+
+            Text(model.selectedProfileCaption)
+                .font(.geist(14, .medium))
+                .foregroundStyle(Brand.textSecondary)
+                .contentTransition(.opacity)
+                .animation(.easeOut(duration: 0.2), value: model.selectedProfileCaption)
         }
     }
 
     /// Тумблер в центре — единственный акцент экрана.
-    private var stage: some View {
-        PowerCapsule(isOn: model.wantsConnection, knobMode: model.knobMode) {
+    private func stage(height: CGFloat) -> some View {
+        PowerCapsule(isOn: model.wantsConnection, knobMode: model.knobMode, height: height) {
             Task { await model.toggleConnection() }
         }
-        .frame(height: PowerCapsule.height + 20)
+        .frame(height: height + 16)
     }
 
     @ViewBuilder
@@ -185,6 +195,27 @@ extension AppModel {
         case .disconnecting: return "Отключаемся"
         default: return wantsConnection ? "Подключаемся" : "Не подключено"
         }
+    }
+
+    /// Под названием сервера: что внутри режима или пинг страны.
+    var selectedProfileCaption: String {
+        guard let profile = state.selectedProfile else { return " " }
+        if profile.pingOutbound == nil {
+            let count = profile.serverCount ?? 0
+            return count > 1 ? "\(count) \(Self.serversWord(count)), выбирает быстрый" : "Выбирает быстрый сервер"
+        }
+        if let measured = delays[profile.id] {
+            return measured.map { "Пинг \($0) мс" } ?? "Сервер не ответил"
+        }
+        return ProfileName(profile.name).code.map { "Сервер \($0)" } ?? " "
+    }
+
+    static func serversWord(_ count: Int) -> String {
+        let tens = count % 100, ones = count % 10
+        if (11...14).contains(tens) { return "серверов" }
+        if ones == 1 { return "сервер" }
+        if (2...4).contains(ones) { return "сервера" }
+        return "серверов"
     }
 
     var knobMode: HexKnob.Mode {

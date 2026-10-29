@@ -6,6 +6,8 @@ BUNDLE_ID_PREFIX = com.example.umbra
 APP_GROUP_ID = group.$(BUNDLE_ID_PREFIX)
 // Диплинк импорта подписки: <scheme>://import?url=<ссылка>
 APP_URL_SCHEME = umbra
+// Политика конфиденциальности: ссылка в приложении и в App Store Connect. `$()` — иначе // станет комментарием.
+PRIVACY_POLICY_URL = https:/$()/bot.tpbn.pro/legal/privacy-policy.html
 
 MARKETING_VERSION = 0.1.0
 CURRENT_PROJECT_VERSION = 1

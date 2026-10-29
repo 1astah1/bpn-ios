@@ -20,7 +20,13 @@ struct ServerSheet: View {
                             row(profile, index: index)
                         }
                     }
-                    MonoLabel("Страны · \(countries.count)").padding(.leading, 6).padding(.top, modes.isEmpty ? 0 : 14)
+                    HStack(alignment: .firstTextBaseline) {
+                        MonoLabel("Серверы · \(countries.count)")
+                        Spacer()
+                        measureButton
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.top, modes.isEmpty ? 0 : 14)
                     ForEach(Array(countries.enumerated()), id: \.element.id) { index, profile in
                         row(profile, index: modes.count + index)
                     }
@@ -34,25 +40,36 @@ struct ServerSheet: View {
             .navigationTitle("Серверы")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbarBackground(Brand.background, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    if model.isMeasuring {
-                        ProgressView().tint(Brand.blueSoft)
-                    } else {
-                        Button {
-                            Task { await model.measureDelays() }
-                        } label: {
-                            Label("Скорость", systemImage: "speedometer").labelStyle(.titleAndIcon)
-                        }
-                        .disabled(model.isConnected)
-                    }
-                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Готово") { dismiss() }
                 }
             }
         }
         .onAppear { appeared = true }
+    }
+
+    /// Пинг меряется из приложения, поэтому только при выключенном VPN — иначе цифры шли бы через туннель.
+    @ViewBuilder
+    private var measureButton: some View {
+        if model.isMeasuring {
+            ProgressView().controlSize(.small).tint(Brand.blueSoft)
+        } else if model.isConnected {
+            Text("пинг — при выключенном VPN")
+                .font(.mono(11))
+                .foregroundStyle(Brand.textSecondary)
+        } else {
+            Button {
+                Task { await model.measureDelays() }
+            } label: {
+                Text("Замерить пинг")
+                    .font(.geist(14, .semibold))
+                    .foregroundStyle(Brand.blueSoft)
+            }
+            .buttonStyle(PressScale())
+        }
     }
 
     private func row(_ profile: Profile, index: Int) -> some View {
@@ -67,8 +84,8 @@ struct ServerSheet: View {
                     Text(name.title)
                         .font(.geist(17, .semibold))
                         .foregroundStyle(Brand.text)
-                    if profile.pingOutbound == nil {
-                        Text("Несколько серверов, выбирает сам")
+                    if profile.pingOutbound == nil, let count = profile.serverCount, count > 1 {
+                        Text("\(count) \(AppModel.serversWord(count)) · выбирает быстрый")
                             .font(.geist(13))
                             .foregroundStyle(Brand.textSecondary)
                     }

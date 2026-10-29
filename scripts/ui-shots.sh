@@ -5,7 +5,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 SUB="$1"
 DEVICE="${2:-iPhone 17 Pro}"
-ID=$(xcrun simctl list devices available -j | python3 -c "import json,sys; n=sys.argv[1]; print(next(d['udid'] for r in json.load(sys.stdin)['devices'].values() for d in r if d['name']==n))" "$DEVICE")
+ID=$(xcrun simctl list devices available -j | python3 -c "import json,sys; n=sys.argv[1]; print(next((d['udid'] for r in json.load(sys.stdin)['devices'].values() for d in r if d['name']==n), ''))" "$DEVICE")
+if [ -z "$ID" ]; then
+    # Нет такого симулятора (например, iPhone SE) — создаём на последней iOS.
+    RUNTIME=$(xcrun simctl list runtimes -j | python3 -c "import json,sys; print([r['identifier'] for r in json.load(sys.stdin)['runtimes'] if r['platform']=='iOS' and r['isAvailable']][-1])")
+    ID=$(xcrun simctl create "$DEVICE" "$DEVICE" "$RUNTIME")
+fi
 # Чистый симулятор: без чужих окон (Safari и т.п.) поверх приложения на скриншотах.
 xcrun simctl shutdown "$ID" 2>/dev/null || true
 xcrun simctl erase "$ID"

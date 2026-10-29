@@ -50,7 +50,8 @@ enum ProfileFactory {
                 id: uniqueID(name, in: profiles),
                 name: name,
                 config: try JSONSerialization.data(withJSONObject: config),
-                pingOutbound: proxies.count == 1 ? try JSONSerialization.data(withJSONObject: proxies[0]) : nil
+                pingOutbound: proxies.count == 1 ? try JSONSerialization.data(withJSONObject: proxies[0]) : nil,
+                serverCount: proxies.count
             ))
         }
         return try nonEmpty(profiles, placeholders: placeholders)
@@ -79,7 +80,8 @@ enum ProfileFactory {
                 id: "auto",
                 name: "Автовыбор",
                 config: try JSONSerialization.data(withJSONObject: config(proxies: tagged, balance: true)),
-                pingOutbound: nil
+                pingOutbound: nil,
+                serverCount: servers.count
             ))
         }
         for server in servers {
@@ -88,7 +90,8 @@ enum ProfileFactory {
                 id: uniqueID(server.name, in: profiles),
                 name: server.name,
                 config: try JSONSerialization.data(withJSONObject: config(proxies: [proxy], balance: false)),
-                pingOutbound: try JSONSerialization.data(withJSONObject: proxy)
+                pingOutbound: try JSONSerialization.data(withJSONObject: proxy),
+                serverCount: 1
             ))
         }
         return try nonEmpty(profiles, placeholders: placeholders)

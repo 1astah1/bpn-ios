@@ -17,6 +17,13 @@ final class UmbraUITests: XCTestCase {
         )
         app.launch()
 
+        // Сначала экран про данные (App Review 5.4), потом ссылка подписки.
+        let accept = app.buttons["Понятно, продолжить"]
+        if accept.waitForExistence(timeout: 3) {
+            snapshot("00-privacy")
+            accept.tap()
+        }
+
         // Онбординг: при прошлом прогоне подписка могла остаться — тогда сразу главный экран.
         let field = app.textFields.firstMatch
         if field.waitForExistence(timeout: 3) {
@@ -37,9 +44,10 @@ final class UmbraUITests: XCTestCase {
         sleep(1)
         snapshot("03-servers")
 
-        app.buttons["Скорость"].tap()
+        app.buttons["Замерить пинг"].tap()
         let measured = app.staticTexts.matching(NSPredicate(format: "label ENDSWITH ' мс' OR label == 'нет ответа'")).firstMatch
         XCTAssertTrue(measured.waitForExistence(timeout: 40), "Скорость серверов не показалась")
+        app.navigationBars["Серверы"].swipeUp()
         sleep(1)
         snapshot("04-servers-ping")
         app.buttons["Готово"].tap()

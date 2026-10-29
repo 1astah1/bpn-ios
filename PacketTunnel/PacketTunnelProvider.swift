@@ -19,10 +19,12 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     }
 
     override func startTunnel(options: [String: NSObject]?, completionHandler: @escaping (Error?) -> Void) {
-        guard let config = try? String(contentsOf: AppGroup.tunnelConfigURL, encoding: .utf8) else {
+        guard let stored = try? String(contentsOf: AppGroup.tunnelConfigURL, encoding: .utf8) else {
             completionHandler(TunnelError.noConfig)
             return
         }
+        // До смены сетевых настроек: синтез адресов идёт через DNS64 физической сети.
+        let config = NAT64.rewrite(stored)
         setTunnelNetworkSettings(Self.networkSettings()) { [weak self] error in
             guard let self else { return }
             if let error {
@@ -54,7 +56,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         case .reload:
             do {
                 guard let fd = tunFd else { throw TunnelError.noTunFd }
-                let config = try String(contentsOf: AppGroup.tunnelConfigURL, encoding: .utf8)
+                let config = NAT64.rewrite(try String(contentsOf: AppGroup.tunnelConfigURL, encoding: .utf8))
                 try Xray.stop()
                 try Xray.run(config: Self.runtime(config, fd: fd))
                 completionHandler?(Data("ok".utf8))

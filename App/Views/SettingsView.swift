@@ -38,6 +38,16 @@ struct SettingsView: View {
                         }
                     }
 
+                    if let url = AppModel.privacyPolicyURL {
+                        group("Данные") {
+                            Link(destination: url) {
+                                cell("Конфиденциальность", icon: "hand.raised") {
+                                    Image(systemName: "arrow.up.right").foregroundStyle(Brand.textSecondary)
+                                }
+                            }
+                        }
+                    }
+
                     group("О приложении") {
                         cell("Версия", icon: "info.circle") {
                             Text(Self.appVersion).font(.mono(13)).foregroundStyle(Brand.textSecondary)
@@ -66,6 +76,8 @@ struct SettingsView: View {
             .navigationTitle("Настройки")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbarBackground(Brand.background, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Готово") { dismiss() }
@@ -99,6 +111,7 @@ struct SettingsView: View {
             Text(title)
                 .font(.geist(16, .medium))
                 .foregroundStyle(Brand.text)
+                .multilineTextAlignment(.leading)
             Spacer()
             accessory()
         }

@@ -46,6 +46,7 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         AppGroupID: $(APP_GROUP_ID)
+        PrivacyPolicyURL: $(PRIVACY_POLICY_URL)
         CFBundleURLTypes:
           - CFBundleURLName: $(BUNDLE_ID_PREFIX)
             CFBundleURLSchemes: [$(APP_URL_SCHEME)]
