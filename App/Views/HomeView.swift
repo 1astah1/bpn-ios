@@ -31,7 +31,7 @@ struct HomeView: View {
                 } label: {
                     HStack {
                         Image(systemName: "globe")
-                        Text(model.selectedServerName)
+                        Text(model.state.selectedProfile?.name ?? "Выберите сервер")
                             .lineLimit(1)
                         Spacer()
                         Image(systemName: "chevron.right")

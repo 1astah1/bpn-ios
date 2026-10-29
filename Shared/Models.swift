@@ -21,26 +21,26 @@ struct Subscription: Codable, Equatable {
     }
 }
 
-struct Server: Codable, Identifiable, Equatable {
-    /// Уникальный тег outbound в конфиге Xray (`proxy-N`).
+/// Профиль из подписки: «Авто», отдельная страна, «Обход LTE» — у каждого свой полный конфиг Xray
+/// с маршрутизацией, которую задаёт панель.
+struct Profile: Codable, Identifiable, Equatable {
+    /// Имя из подписки (с номером при повторе) — переживает обновление подписки, на нём держится выбор.
     var id: String
-    /// Имя из ссылки подписки, как его задал сервис.
     var name: String
-    /// Outbound в формате Xray JSON.
-    var outbound: Data
-}
-
-enum ServerSelection: Codable, Equatable {
-    case auto
-    case server(id: String)
+    /// Полный конфиг Xray как его отдала панель (или собрали мы из ссылок).
+    var config: Data
+    /// Единственный прокси профиля — его можно пинговать. У «Авто» и «Обход LTE» серверов несколько.
+    var pingOutbound: Data?
 }
 
 struct AppState: Codable, Equatable {
     var subscription: Subscription?
-    var servers: [Server] = []
-    var selection: ServerSelection = .auto
-    /// Российские сайты идут мимо VPN.
-    var directDomestic = true
+    var profiles: [Profile] = []
+    var selectedProfileID: String?
+
+    var selectedProfile: Profile? {
+        profiles.first { $0.id == selectedProfileID } ?? profiles.first
+    }
 }
 
 /// Состояние лежит файлом в общей папке: его читает и приложение, и расширение.

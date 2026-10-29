@@ -67,6 +67,9 @@ targets:
     platform: iOS
     sources:
       - path: PacketTunnel
+        excludes: [Resources]
+      - path: PacketTunnel/Resources
+        buildPhase: resources
       - path: Shared
     dependencies:
       - framework: Vendor/LibXray.xcframework

@@ -8,7 +8,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var status: NEVPNStatus = .invalid
     @Published private(set) var isRefreshing = false
     @Published private(set) var isMeasuring = false
-    /// Задержка до сервера, мс; nil — не ответил. Нет ключа — ещё не мерили.
+    /// Задержка до сервера профиля, мс; nil — не ответил. Нет ключа — ещё не мерили.
     @Published private(set) var delays: [String: Int?] = [:]
     @Published var errorMessage: String?
 
@@ -22,13 +22,6 @@ final class AppModel: ObservableObject {
     var isConnected: Bool { status == .connected }
     var isBusy: Bool { [.connecting, .disconnecting, .reasserting].contains(status) }
 
-    var selectedServerName: String {
-        switch state.selection {
-        case .auto: return "Автовыбор"
-        case .server(let id): return state.servers.first { $0.id == id }?.name ?? "Автовыбор"
-        }
-    }
-
     func onLaunch() async {
         await tunnel.load()
         if let subscription = state.subscription, subscription.isStale {
@@ -38,7 +31,7 @@ final class AppModel: ObservableObject {
 
     // MARK: Подписка
 
-    /// Ссылка подписки — вставкой, из QR или диплинком `<scheme>://import?url=...`.
+    /// Ссылка подписки — вставкой или диплинком `<scheme>://import?url=...`.
     func addSubscription(_ text: String) async {
         guard let url = Self.subscriptionURL(from: text) else {
             errorMessage = "Это не похоже на ссылку подписки"
@@ -69,12 +62,12 @@ final class AppModel: ObservableObject {
         isRefreshing = true
         defer { isRefreshing = false }
         do {
-            let (subscription, servers) = try await client.fetch(url)
+            let (subscription, profiles) = try await client.fetch(url)
             update { state in
                 state.subscription = subscription
-                state.servers = servers
-                if case .server(let id) = state.selection, !servers.contains(where: { $0.id == id }) {
-                    state.selection = .auto
+                state.profiles = profiles
+                if !profiles.contains(where: { $0.id == state.selectedProfileID }) {
+                    state.selectedProfileID = profiles.first?.id
                 }
             }
             delays = [:]
@@ -112,13 +105,8 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func select(_ selection: ServerSelection) async {
-        update { $0.selection = selection }
-        await applyConfigIfConnected()
-    }
-
-    func setDirectDomestic(_ enabled: Bool) async {
-        update { $0.directDomestic = enabled }
+    func select(_ profile: Profile) async {
+        update { $0.selectedProfileID = profile.id }
         await applyConfigIfConnected()
     }
 
@@ -133,12 +121,13 @@ final class AppModel: ObservableObject {
     }
 
     private func writeTunnelConfig() throws {
+        guard let profile = state.selectedProfile else { throw ProfileFactory.ParseError.empty }
         #if DEBUG
         let logLevel = "info"
         #else
         let logLevel = "warning"
         #endif
-        let config = try XrayConfigBuilder.build(state: state, logLevel: logLevel)
+        let config = try TunnelConfig.adapt(profile.config, logLevel: logLevel)
         try Data(config.utf8).write(
             to: AppGroup.tunnelConfigURL,
             options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
@@ -149,21 +138,28 @@ final class AppModel: ObservableObject {
 
     /// Меряем из процесса приложения и только без VPN: через туннель цифры были бы двойными.
     func measureDelays() async {
-        guard !isConnected, !isMeasuring, !state.servers.isEmpty else { return }
+        guard !isConnected, !isMeasuring else { return }
+        let measurable = state.profiles.compactMap { profile -> (id: String, outbound: [String: Any])? in
+            guard let data = profile.pingOutbound,
+                  let outbound = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+            return (profile.id, outbound)
+        }
+        guard !measurable.isEmpty else { return }
         isMeasuring = true
         defer { isMeasuring = false }
-        let servers = state.servers
-        let outbounds = servers.compactMap { try? JSONSerialization.jsonObject(with: $0.outbound) as? [String: Any] }
-        guard outbounds.count == servers.count else { return }
 
+        // У каждого профиля прокси с тегом "proxy" — для пачки нужны разные теги.
+        let outbounds = measurable.enumerated().map { index, item in
+            item.outbound.merging(["tag": "ping-\(index)"]) { $1 }
+        }
         let results = await Task.detached(priority: .userInitiated) {
-            try? Xray.ping(outbounds: outbounds, url: XrayConfigBuilder.probeURL, timeoutSeconds: 5)
+            try? Xray.ping(outbounds: outbounds, url: TunnelConfig.probeURL, timeoutSeconds: 5)
         }.value
         guard let results else {
             errorMessage = "Не удалось проверить серверы"
             return
         }
-        delays = Dictionary(uniqueKeysWithValues: zip(servers.map(\.id), results))
+        delays = Dictionary(uniqueKeysWithValues: zip(measurable.map(\.id), results))
     }
 
     // MARK: Вспомогательное

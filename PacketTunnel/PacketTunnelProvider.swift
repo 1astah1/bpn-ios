@@ -33,7 +33,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             do {
                 guard let fd = Self.findTunFd() else { throw TunnelError.noTunFd }
                 self.tunFd = fd
-                try Xray.run(config: XrayConfigBuilder.injectingTunFd(fd, into: config))
+                try Xray.run(config: Self.runtime(config, fd: fd))
                 self.log.info("xray started, fd \(fd)")
                 completionHandler(nil)
             } catch {
@@ -56,7 +56,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                 guard let fd = tunFd else { throw TunnelError.noTunFd }
                 let config = try String(contentsOf: AppGroup.tunnelConfigURL, encoding: .utf8)
                 try Xray.stop()
-                try Xray.run(config: XrayConfigBuilder.injectingTunFd(fd, into: config))
+                try Xray.run(config: Self.runtime(config, fd: fd))
                 completionHandler?(Data("ok".utf8))
             } catch {
                 log.error("reload: \(error.localizedDescription, privacy: .public)")
@@ -73,7 +73,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
 
         let ipv4 = NEIPv4Settings(addresses: [TunnelInterface.ipv4Address], subnetMasks: [TunnelInterface.ipv4Mask])
         ipv4.includedRoutes = [NEIPv4Route.default()]
-        ipv4.excludedRoutes = DomesticRules.privateCIDRs.compactMap(Self.ipv4Route)
+        ipv4.excludedRoutes = DomesticRules.privateIPv4CIDRs.compactMap(Self.ipv4Route)
         settings.ipv4Settings = ipv4
 
         // IPv6 тоже заворачиваем в туннель, иначе он уходит мимо VPN.
@@ -88,6 +88,11 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         dns.matchDomains = [""]
         settings.dnsSettings = dns
         return settings
+    }
+
+    /// geoip.dat / geosite.dat лежат в ресурсах расширения.
+    private static func runtime(_ config: String, fd: Int32) throws -> String {
+        try TunnelConfig.runtime(config, tunFd: fd, assetDirectory: Bundle.main.resourcePath ?? "")
     }
 
     private static func ipv4Route(_ cidr: String) -> NEIPv4Route? {

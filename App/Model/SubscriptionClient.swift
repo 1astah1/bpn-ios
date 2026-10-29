@@ -1,6 +1,6 @@
 import Foundation
 
-/// Загружает подписку панели (Remnawave / 3x-ui) и превращает её в список серверов.
+/// Загружает подписку панели (Remnawave / 3x-ui) и превращает её в профили.
 struct SubscriptionClient {
     struct Device {
         var hwid: String
@@ -11,12 +11,14 @@ struct SubscriptionClient {
     enum FetchError: LocalizedError {
         case badStatus(Int)
         case notHTTP
+        case deviceLimit
 
         var errorDescription: String? {
             switch self {
             case .badStatus(404): return "Подписка не найдена — проверь ссылку"
             case .badStatus(let code): return "Сервер подписки ответил ошибкой \(code)"
             case .notHTTP: return "Ссылка подписки должна начинаться с https://"
+            case .deviceLimit: return "На подписке уже максимум устройств. Отвяжите старое устройство в боте и попробуйте снова."
             }
         }
     }
@@ -24,10 +26,39 @@ struct SubscriptionClient {
     var device: Device
     var userAgent: String
 
-    func fetch(_ url: URL) async throws -> (Subscription, [Server]) {
+    func fetch(_ url: URL) async throws -> (Subscription, [Profile]) {
+        let (data, response) = try await get(url)
+        if response.value(forHTTPHeaderField: "x-hwid-max-devices-reached") == "true" {
+            throw FetchError.deviceLimit
+        }
+
+        var body = String(decoding: data, as: UTF8.self)
+        // Remnawave по ссылке подписки отдаёт незнакомым клиентам base64, где «Авто» и «Обход LTE» — заглушки.
+        // Полные конфиги лежат по тому же адресу с /json. У других панелей такого пути нет — тогда остаёмся на ссылках.
+        if !ProfileFactory.isJSON(body), let jsonURL = Self.jsonVariant(of: url),
+           let jsonResponse = try? await get(jsonURL) {
+            let jsonBody = String(decoding: jsonResponse.0, as: UTF8.self)
+            if ProfileFactory.isJSON(jsonBody) { body = jsonBody }
+        }
+
+        let profiles = try ProfileFactory.profiles(from: body)
+        let subscription = Subscription(
+            url: url,
+            title: Self.header(response, "profile-title"),
+            usage: Self.header(response, "subscription-userinfo").flatMap(Self.parseUsage),
+            supportURL: Self.header(response, "support-url").flatMap(URL.init(string:)),
+            webPageURL: Self.header(response, "profile-web-page-url").flatMap(URL.init(string:)),
+            announce: Self.header(response, "announce"),
+            updateIntervalHours: Self.header(response, "profile-update-interval").flatMap { Int($0) },
+            updatedAt: Date()
+        )
+        return (subscription, profiles)
+    }
+
+    private func get(_ url: URL) async throws -> (Data, HTTPURLResponse) {
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
-        // Заголовки устройства: по ним Remnawave считает лимит устройств на подписку.
+        // Без этих заголовков Remnawave при включённом лимите устройств отдаёт заглушку вместо серверов.
         request.setValue(device.hwid, forHTTPHeaderField: "x-hwid")
         request.setValue("iOS", forHTTPHeaderField: "x-device-os")
         request.setValue(device.osVersion, forHTTPHeaderField: "x-ver-os")
@@ -36,47 +67,15 @@ struct SubscriptionClient {
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw FetchError.notHTTP }
         guard (200..<300).contains(http.statusCode) else { throw FetchError.badStatus(http.statusCode) }
-
-        let servers = try Self.servers(from: String(decoding: data, as: UTF8.self))
-        let subscription = Subscription(
-            url: url,
-            title: Self.header(http, "profile-title"),
-            usage: Self.header(http, "subscription-userinfo").flatMap(Self.parseUsage),
-            supportURL: Self.header(http, "support-url").flatMap(URL.init(string:)),
-            webPageURL: Self.header(http, "profile-web-page-url").flatMap(URL.init(string:)),
-            announce: Self.header(http, "announce"),
-            updateIntervalHours: Self.header(http, "profile-update-interval").flatMap { Int($0) },
-            updatedAt: Date()
-        )
-        return (subscription, servers)
+        return (data, http)
     }
 
-    /// Тело подписки: base64 со ссылками, ссылки построчно или массив полных Xray JSON (формат Remnawave для Happ).
-    static func servers(from body: String) throws -> [Server] {
-        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
-        var named: [(name: String, outbound: [String: Any])] = []
-
-        if trimmed.hasPrefix("["),
-           let configs = try? JSONSerialization.jsonObject(with: Data(trimmed.utf8)) as? [[String: Any]] {
-            for (index, config) in configs.enumerated() {
-                let outbounds = config["outbounds"] as? [[String: Any]] ?? []
-                guard let proxy = outbounds.first(where: { $0["tag"] as? String == "proxy" })
-                        ?? outbounds.first(where: { !["freedom", "blackhole", "dns"].contains($0["protocol"] as? String ?? "") })
-                else { continue }
-                named.append((config["remarks"] as? String ?? "Сервер \(index + 1)", proxy))
-            }
-        } else {
-            for (index, outbound) in try Xray.outbounds(fromShareLinks: trimmed).enumerated() {
-                named.append((outbound["tag"] as? String ?? "Сервер \(index + 1)", outbound))
-            }
-        }
-
-        return try named.enumerated().map { index, item in
-            var outbound = item.outbound
-            let id = "proxy-\(index)"
-            outbound["tag"] = id
-            return Server(id: id, name: item.name, outbound: try JSONSerialization.data(withJSONObject: outbound))
-        }
+    private static func jsonVariant(of url: URL) -> URL? {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
+        let path = components.path.hasSuffix("/") ? String(components.path.dropLast()) : components.path
+        guard !path.isEmpty, !path.hasSuffix("/json") else { return nil }
+        components.path = path + "/json"
+        return components.url
     }
 
     /// Значения вида `base64:...` панели кодируют, чтобы пропустить эмодзи и кириллицу в заголовке.

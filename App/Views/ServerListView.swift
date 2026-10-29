@@ -5,13 +5,8 @@ struct ServerListView: View {
 
     var body: some View {
         List {
-            Section {
-                row(title: "Автовыбор", subtitle: "Самый быстрый сервер, при обрыве — следующий", selection: .auto, delay: nil)
-            }
-            Section("Серверы") {
-                ForEach(model.state.servers) { server in
-                    row(title: server.name, subtitle: nil, selection: .server(id: server.id), delay: model.delays[server.id])
-                }
+            ForEach(model.state.profiles) { profile in
+                row(profile)
             }
         }
         .navigationTitle("Сервер")
@@ -30,28 +25,28 @@ struct ServerListView: View {
         }
     }
 
-    /// `delay`: nil — не мерили, .some(nil) — не ответил.
-    private func row(title: String, subtitle: String?, selection: ServerSelection, delay: Int??) -> some View {
+    private func row(_ profile: Profile) -> some View {
         Button {
-            Task { await model.select(selection) }
+            Task { await model.select(profile) }
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
+                    Text(profile.name)
                         .foregroundStyle(.primary)
-                    if let subtitle {
-                        Text(subtitle)
+                    if profile.pingOutbound == nil {
+                        Text("Несколько серверов, выбирает сам")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
                 Spacer()
-                if let delay {
+                // nil — не мерили, .some(nil) — не ответил.
+                if let delay = model.delays[profile.id] {
                     Text(delay.map { "\($0) мс" } ?? "нет ответа")
                         .font(.caption.monospacedDigit())
-                        .foregroundStyle(delay == nil ? Color.red : .secondary)
+                        .foregroundStyle(delay == nil ? Color.red : Color.secondary)
                 }
-                if model.state.selection == selection {
+                if model.state.selectedProfile?.id == profile.id {
                     Image(systemName: "checkmark")
                         .foregroundStyle(Color.accentColor)
                         .fontWeight(.semibold)

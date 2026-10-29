@@ -8,18 +8,6 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section {
-                    Toggle(
-                        "Российские сайты напрямую",
-                        isOn: Binding(
-                            get: { model.state.directDomestic },
-                            set: { value in Task { await model.setDirectDomestic(value) } }
-                        )
-                    )
-                } footer: {
-                    Text("Банки, Госуслуги и маркетплейсы откроются без VPN — с иностранного адреса они часто не пускают.")
-                }
-
                 if let subscription = model.state.subscription {
                     Section("Подписка") {
                         Button {
